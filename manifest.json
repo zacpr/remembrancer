@@ -1,14 +1,15 @@
-
 {
   "manifest_version": 2,
   "name": "Form State Remembrancer",
-  "version": "1.1.0",
-  "description": "Remembers and restores the state of form inputs on a page. Don't you never fill same form twice....again!",
+  "version": "2.0.0",
+  "description": "Remembers and restores the state of form inputs on a page. Modern UI with statistics, history tracking, and beautiful animations!",
   "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "96": "icons/icon-96.png"
   },
-    "browser_specific_settings": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "@form-remembrancer",
       "data_collection_permissions": {
@@ -16,23 +17,68 @@
       }
     }
   },
-   "permissions": [
+  "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "notifications",
+    "contextMenus",
+    "commands"
   ],
-  "browser_action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "32": "icons/icon-32.png"
-    }
-  },
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["background.js"],
+    "persistent": false
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_end"
     }
-  ]
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    },
+    "default_title": "Form State Remembrancer"
+  },
+  "commands": {
+    "save-form": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Save form state"
+    },
+    "restore-form": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R",
+        "mac": "Command+Shift+R"
+      },
+      "description": "Restore form state"
+    },
+    "toggle-auto-restore": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Toggle auto-restore for current page"
+    },
+    "_execute_browser_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Open Form Remembrancer popup"
+    }
+  },
+  "web_accessible_resources": [
+    "icons/*.png"
+  ],
+  "author": "Form Remembrancer Team",
+  "homepage_url": "https://github.com/zacpr/remembrancer",
+  "short_name": "Form Remembrancer"
 }
