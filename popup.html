@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Form State Remembrancer</title>
+  <style>
+    body {
+      width: 200px;
+      text-align: center;
+    }
+    button {
+      margin: 10px;
+      padding: 10px;
+      width: 150px;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      color: #666666;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <button id="save-button">Remember</button>
+  <button id="restore-button">Reapply</button>
+  <button id="auto-restore-button">Toggle Auto-Restore</button>
+  <button id="forget-button">Forget</button>
+  <script src="popup.js"></script>
+</body>
+</html>
