@@ -56,6 +56,17 @@ function initializeTabs() {
 
 // Initialize action buttons with enhanced functionality
 function initializeActionButtons() {
+  // Handshake function to check for content script readiness
+  async function handshake(tabId) {
+    try {
+      const response = await browser.tabs.sendMessage(tabId, { action: 'ping' });
+      return response && response.action === 'pong';
+    } catch (error) {
+      console.error('Handshake failed:', error);
+      return false;
+    }
+  }
+
   // Save button - simplified direct approach with better error handling
   document.getElementById('save-button').addEventListener('click', async () => {
     console.log('Save button clicked - using simplified approach');
@@ -74,6 +85,12 @@ function initializeActionButtons() {
       console.log('Current tab:', currentTab.url);
       
       // Check if we can communicate with content script
+      if (!await handshake(currentTab.id)) {
+        showToast('Content script not ready. Please refresh the page and try again.', 'error');
+        showLoading(false);
+        return;
+      }
+      
       try {
         // Get form data directly from content script
         const response = await browser.tabs.sendMessage(currentTab.id, { action: 'save' });
@@ -127,6 +144,12 @@ function initializeActionButtons() {
       console.log('Current tab for restore:', currentTab.url);
       
       // Check if we can communicate with content script
+      if (!await handshake(currentTab.id)) {
+        showToast('Content script not ready. Please refresh the page and try again.', 'error');
+        showLoading(false);
+        return;
+      }
+      
       try {
         
         // Send restore data to content script

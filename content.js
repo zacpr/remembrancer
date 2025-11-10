@@ -120,6 +120,10 @@ function setupMessageListeners() {
     console.log('Content: Received message:', message.action);
     
     switch (message.action) {
+      case 'ping':
+        sendResponse({ action: 'pong' });
+        break;
+        
       case 'save':
         handleSaveAction().then(() => {
           console.log('Content: Save completed successfully');
@@ -406,6 +410,16 @@ function findInputByKey(key, inputData) {
     if (element) return element;
   }
   
+  // For radio buttons, we need to match both name and value
+  if (inputData.type === 'radio' && inputData.name) {
+    const radioButtons = document.querySelectorAll(`input[type="radio"][name="${inputData.name}"]`);
+    for (const radio of radioButtons) {
+      if (radio.value === inputData.value) {
+        return radio;
+      }
+    }
+  }
+
   // Try to find by name
   if (inputData.name) {
     const element = document.querySelector(`[name="${inputData.name}"]`);
