@@ -76,35 +76,19 @@ function initializeActionButtons() {
       // Check if we can communicate with content script
       try {
         // Get form data directly from content script
-        const formData = await browser.tabs.sendMessage(currentTab.id, { action: 'getFormData' });
-        console.log('Form data received:', formData);
+        const response = await browser.tabs.sendMessage(currentTab.id, { action: 'save' });
+        console.log('Form data received:', response);
         
-        if (!formData || !formData.data || Object.keys(formData.data).length <= 1) {
+        if (!response || !response.success) {
           showToast('No form data to save', 'error');
           showLoading(false);
           return;
         }
         
-        // Save directly to storage
-        const saveData = {
-          formData: formData.data,
-          timestamp: Date.now(),
-          url: currentTab.url
-        };
-        
-        await browser.storage.local.set({ [currentTab.url]: saveData });
-        console.log('Data saved to storage:', saveData);
-        
-        // Verify save
-        const verify = await browser.storage.local.get(currentTab.url);
-        if (verify[currentTab.url]) {
-          console.log('Save verified successfully');
-          await recordStatistics('save');
-          showToast('Form state saved successfully!', 'success');
-          setTimeout(updateButtonStates, 100);
-        } else {
-          showToast('Save verification failed', 'error');
-        }
+        console.log('Save verified successfully');
+        await recordStatistics('save');
+        showToast('Form state saved successfully!', 'success');
+        setTimeout(updateButtonStates, 100);
         
       } catch (messageError) {
         console.error('Error communicating with content script:', messageError);
@@ -144,21 +128,10 @@ function initializeActionButtons() {
       
       // Check if we can communicate with content script
       try {
-        // Get saved data directly from storage
-        const result = await browser.storage.local.get(currentTab.url);
-        const saveData = result[currentTab.url];
-        console.log('Retrieved saved data:', saveData);
-        
-        if (!saveData || !saveData.formData) {
-          showToast('No saved form data found for this page', 'error');
-          showLoading(false);
-          return;
-        }
         
         // Send restore data to content script
         const restoreResponse = await browser.tabs.sendMessage(currentTab.id, {
-          action: 'restoreFormData',
-          data: saveData.formData
+          action: 'restore'
         });
         console.log('Restore response from content:', restoreResponse);
         
