@@ -18,6 +18,10 @@
           <span class="app-title">Form Remembrancer</span>
         </div>
         <div class="stats-badge" id="total-forms">0 forms</div>
+        <div class="privacy-indicator" id="privacy-indicator" style="display: none;">
+          <span class="privacy-icon">🔒</span>
+          <span class="privacy-text">Private Mode</span>
+        </div>
       </div>
     </header>
 
@@ -118,6 +122,44 @@
 
         <!-- Settings Tab -->
         <div class="tab-pane" id="settings-tab">
+          <div class="settings-section">
+            <h3>Privacy & Data</h3>
+            <label class="setting-item">
+              <input type="checkbox" id="enable-statistics" checked>
+              <span>Enable statistics for graphs</span>
+            </label>
+            <label class="setting-item">
+              <input type="checkbox" id="enable-history" checked>
+              <span>Enable History table</span>
+            </label>
+          </div>
+          
+          <div class="settings-section">
+            <h3>Theme & Appearance</h3>
+            <div class="theme-selector">
+              <label class="setting-item">
+                <input type="radio" name="theme" value="gradient" checked>
+                <span>🌈 Gradient Theme</span>
+              </label>
+              <label class="setting-item">
+                <input type="radio" name="theme" value="greyscale">
+                <span>⚫ Greyscale Theme</span>
+              </label>
+              <label class="setting-item">
+                <input type="radio" name="theme" value="minimal">
+                <span>⚪ Minimal Theme</span>
+              </label>
+            </div>
+            <label class="setting-item">
+              <input type="checkbox" id="remove-colors" checked>
+              <span>Remove colors (high contrast)</span>
+            </label>
+            <label class="setting-item">
+              <input type="checkbox" id="dim-inactive" checked>
+              <span>Dim inactive buttons</span>
+            </label>
+          </div>
+          
           <div class="settings-section">
             <h3>Notifications</h3>
             <label class="setting-item">

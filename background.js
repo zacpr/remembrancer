@@ -3,6 +3,8 @@
 // Initialize background script
 console.log('Form State Remembrancer - Enhanced Background Script Loaded');
 
+let isPrivateBrowsing = false;
+
 // Set up message listeners
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender, sendResponse);
@@ -59,13 +61,26 @@ async function handleMessage(message, sender, sendResponse) {
 
 // Handle save action
 async function handleSaveAction(sender) {
+  console.log('Background: Handling save action');
+  
   if (!sender.tab) {
-    throw new Error('No tab information available');
+    console.error('Background: No tab information available');
+    return { success: false, error: 'No tab information available' };
   }
   
   try {
-    // Send save message to content script
+    console.log('Background: Tab ID:', sender.tab.id, 'URL:', sender.tab.url);
+    
+    // Check if private browsing
+    if (sender.tab.incognito) {
+      console.log('Background: Private browsing mode detected');
+      await showNotification('🔒 Private Mode', 'Form saved in private browsing mode', 'warning');
+    }
+    
+    // Send save message to content script and wait for response
+    console.log('Background: Sending save message to content script');
     const response = await browser.tabs.sendMessage(sender.tab.id, { action: 'save' });
+    console.log('Background: Received response from content script:', response);
     
     if (response && response.success) {
       // Update badge to indicate save
@@ -74,23 +89,41 @@ async function handleSaveAction(sender) {
       // Show notification if enabled
       await showNotification('Form Saved', 'Form state has been saved successfully', 'save');
       
-      console.log('Save action completed successfully');
+      console.log('Background: Save action completed successfully');
+      return { success: true };
+    } else {
+      const errorMsg = response?.error || 'Save operation failed in content script';
+      console.error('Background: Save action failed:', errorMsg);
+      return { success: false, error: errorMsg };
     }
   } catch (error) {
-    console.error('Error in save action:', error);
-    throw error;
+    console.error('Background: Error in save action:', error);
+    return { success: false, error: error.message };
   }
 }
 
 // Handle restore action
 async function handleRestoreAction(sender) {
+  console.log('Background: Handling restore action');
+  
   if (!sender.tab) {
-    throw new Error('No tab information available');
+    console.error('Background: No tab information available');
+    return { success: false, error: 'No tab information available' };
   }
   
   try {
-    // Send restore message to content script
+    console.log('Background: Tab ID:', sender.tab.id, 'URL:', sender.tab.url);
+    
+    // Check if private browsing
+    if (sender.tab.incognito) {
+      console.log('Background: Private browsing mode detected');
+      await showNotification('🔒 Private Mode', 'Form restored in private browsing mode', 'warning');
+    }
+    
+    // Send restore message to content script and wait for response
+    console.log('Background: Sending restore message to content script');
     const response = await browser.tabs.sendMessage(sender.tab.id, { action: 'restore' });
+    console.log('Background: Received response from content script:', response);
     
     if (response && response.success) {
       // Update badge to indicate restore
@@ -99,11 +132,16 @@ async function handleRestoreAction(sender) {
       // Show notification if enabled
       await showNotification('Form Restored', 'Form state has been restored successfully', 'restore');
       
-      console.log('Restore action completed successfully');
+      console.log('Background: Restore action completed successfully');
+      return { success: true };
+    } else {
+      const errorMsg = response?.error || 'Restore operation failed in content script';
+      console.error('Background: Restore action failed:', errorMsg);
+      return { success: false, error: errorMsg };
     }
   } catch (error) {
-    console.error('Error in restore action:', error);
-    throw error;
+    console.error('Background: Error in restore action:', error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -437,11 +475,6 @@ browser.runtime.onInstalled.addListener(async (details) => {
       'restore'
     );
   }
-});
-
-// Error handling
-browser.runtime.onError.addListener((error) => {
-  console.error('Extension error:', error);
 });
 
 // Cleanup on extension unload

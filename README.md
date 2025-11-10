@@ -66,6 +66,14 @@ A modern, feature-rich Firefox extension that remembers and restores form states
 3. **Auto-restore**: Toggle automatic restoration for specific websites
 4. **Forget Data**: Remove saved form data for current page
 
+### Version 2.1.0
+- 🔒 Added private browsing detection and restrictions
+- ⚙️ Enhanced settings with theme customization
+- 🎨 Added three theme options (Gradient, Greyscale, Minimal)
+- ♿ Implemented high contrast mode for accessibility
+- 🔘 Added inactive button dimming and color removal
+- 🎯 Real-time theme switching with instant preview
+
 ### Keyboard Shortcuts
 - **Ctrl+Shift+S** (Cmd+Shift+S on Mac): Save form state
 - **Ctrl+Shift+R** (Cmd+Shift+R on Mac): Restore form state
@@ -77,6 +85,17 @@ Right-click on any page to access:
 - Save Form State
 - Restore Form State
 - Open Form Remembrancer
+
+### Theme Options
+- **🌈 Gradient Theme**: Beautiful purple-to-pink gradients with full color experience
+- **⚫ Greyscale Theme**: Professional monochromatic design for reduced distraction
+- **⚪ Minimal Theme**: Clean, simple interface with blue-based colors
+- **♿ High Contrast Mode**: Enhanced accessibility with improved text visibility
+
+### Customization Features
+- **🔘 Color Removal**: High contrast mode for better readability
+- **🔘 Inactive Button Dimming**: Visual hierarchy with grayscale filters
+- **🎯 Theme Switching**: Instant preview of changes across all components
 
 ### Statistics Dashboard
 - View total saves and restores

@@ -4,10 +4,14 @@
 let formObserver = null;
 let detectedForms = [];
 let lastSaveTime = 0;
+let isPrivateBrowsing = false;
 
 // Initialize content script
 (function() {
   console.log('Form State Remembrancer - Enhanced Content Script Loaded');
+  
+  // Check private browsing mode
+  checkPrivateBrowsing();
   
   // Initial form detection
   detectForms();
@@ -28,6 +32,8 @@ function detectForms() {
   
   // Find all form elements
   const forms = document.querySelectorAll('form');
+  console.log(`Found ${forms.length} <form> elements`);
+  
   forms.forEach((form, index) => {
     const formInfo = {
       element: form,
@@ -38,10 +44,13 @@ function detectForms() {
       inputCount: form.querySelectorAll('input, textarea, select').length
     };
     detectedForms.push(formInfo);
+    console.log(`Form ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
   });
   
   // Also find form-like elements that might not be in <form> tags
   const formContainers = document.querySelectorAll('[role="form"], .form, .login-form, .signup-form');
+  console.log(`Found ${formContainers.length} form-like containers`);
+  
   formContainers.forEach((container, index) => {
     if (!forms.includes(container)) {
       const formInfo = {
@@ -53,10 +62,11 @@ function detectForms() {
         inputCount: container.querySelectorAll('input, textarea, select').length
       };
       detectedForms.push(formInfo);
+      console.log(`Container ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
     }
   });
   
-  console.log(`Detected ${detectedForms.length} form(s) on page`);
+  console.log(`Total detected forms: ${detectedForms.length}`);
   return detectedForms.length;
 }
 
@@ -107,39 +117,87 @@ function setupFormObserver() {
 // Enhanced message handling
 function setupMessageListeners() {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('Content: Received message:', message.action);
+    
     switch (message.action) {
       case 'save':
-        handleSaveAction();
-        sendResponse({ success: true });
-        break;
+        handleSaveAction().then(() => {
+          console.log('Content: Save completed successfully');
+          sendResponse({ success: true });
+        }).catch((error) => {
+          console.error('Content: Save action failed:', error);
+          sendResponse({ success: false, error: error.message });
+        });
+        return true; // Keep message channel open for async response
         
       case 'restore':
-        handleRestoreAction();
-        sendResponse({ success: true });
+        handleRestoreAction().then(() => {
+          console.log('Content: Restore completed successfully');
+          sendResponse({ success: true });
+        }).catch((error) => {
+          console.error('Content: Restore action failed:', error);
+          sendResponse({ success: false, error: error.message });
+        });
+        return true; // Keep message channel open for async response
+        
+      case 'restoreFormData':
+        try {
+          console.log('Content: Restoring form data directly:', message.data);
+          await restoreFormData(message.data);
+          showRestoreFeedback();
+          sendResponse({ success: true });
+        } catch (error) {
+          console.error('Content: Direct restore failed:', error);
+          sendResponse({ success: false, error: error.message });
+        }
         break;
         
       case 'countForms':
         const count = detectForms();
+        console.log('Content: Form count requested, returning:', count);
         sendResponse({ count });
         break;
         
       case 'getFormData':
         const formData = getFormData();
+        console.log('Content: Form data requested, returning:', formData);
         sendResponse({ data: formData });
         break;
         
       default:
+        console.log('Content: Unknown action:', message.action);
         sendResponse({ success: false, error: 'Unknown action' });
     }
   });
 }
 
 // Enhanced save functionality with statistics
-async function handleSaveAction() {
+function handleSaveAction() {
   try {
+    console.log('Content: Starting save action...');
+    
+    // First detect forms to ensure we have current data
+    detectForms();
+    
+    // Check if we have any forms to save
+    if (detectedForms.length === 0) {
+      console.log('Content: No forms detected on page');
+      return Promise.reject(new Error('No forms found on this page to save'));
+    }
+    
     const formData = getFormData();
     const url = window.location.href;
     const timestamp = Date.now();
+    
+    console.log('Content: Form data extracted:', formData);
+    console.log('Content: Detected forms count:', detectedForms.length);
+    
+    // Check if we have any form data to save
+    const hasFormData = formData && Object.keys(formData).length > 1; // More than just _metadata
+    if (!hasFormData) {
+      console.log('Content: No form data to save');
+      return Promise.reject(new Error('No form data found to save'));
+    }
     
     // Enhanced data structure with metadata
     const saveData = {
@@ -154,46 +212,71 @@ async function handleSaveAction() {
       }
     };
     
+    console.log('Content: Saving data to storage:', saveData);
+    
     // Save to storage
-    await browser.storage.local.set({ [url]: saveData });
-    
-    // Add visual feedback
-    showSaveFeedback();
-    
-    // Track statistics
-    await trackStatistics('save', saveData);
-    
-    console.log('Form state saved successfully with enhanced data');
+    return browser.storage.local.set({ [url]: saveData }).then(() => {
+      console.log('Content: Data saved to storage successfully');
+      
+      // Verify it was saved
+      return browser.storage.local.get(url).then((verifyResult) => {
+        console.log('Content: Verification - saved data:', verifyResult);
+        
+        if (!verifyResult[url]) {
+          console.error('Content: Failed to verify saved data in storage');
+          return Promise.reject(new Error('Failed to verify saved data in storage'));
+        }
+        
+        // Add visual feedback
+        showSaveFeedback();
+        
+        // Track statistics
+        return trackStatistics('save', saveData).then(() => {
+          console.log('Content: Form state saved successfully with enhanced data');
+        });
+      });
+    });
     
   } catch (error) {
-    console.error('Error saving form state:', error);
-    throw error;
+    console.error('Content: Error saving form state:', error);
+    return Promise.reject(error);
   }
 }
 
 // Enhanced restore functionality
-async function handleRestoreAction() {
+function handleRestoreAction() {
   try {
+    console.log('Content: Starting restore action...');
     const url = window.location.href;
-    const result = await browser.storage.local.get(url);
-    const saveData = result[url];
+    console.log('Content: Current URL for restore:', url);
     
-    if (saveData && saveData.formData) {
-      await restoreFormData(saveData.formData);
+    return browser.storage.local.get(url).then((result) => {
+      console.log('Content: Retrieved data from storage:', result);
       
-      // Add visual feedback
-      showRestoreFeedback();
+      const saveData = result[url];
       
-      // Track statistics
-      await trackStatistics('restore', saveData);
-      
-      console.log('Form state restored successfully');
-    } else {
-      console.log('No form data found for current URL');
-    }
+      if (saveData && saveData.formData) {
+        console.log('Content: Found saved data, restoring form data:', saveData.formData);
+        
+        return restoreFormData(saveData.formData).then(() => {
+          // Add visual feedback
+          showRestoreFeedback();
+          
+          // Track statistics
+          return trackStatistics('restore', saveData).then(() => {
+            console.log('Content: Form state restored successfully');
+          });
+        });
+      } else {
+        console.log('Content: No form data found for current URL');
+        console.log('Content: Available keys in storage:', Object.keys(result));
+        return Promise.reject(new Error('No saved form data found for this page'));
+      }
+    });
+    
   } catch (error) {
-    console.error('Error restoring form state:', error);
-    throw error;
+    console.error('Content: Error restoring form state:', error);
+    return Promise.reject(error);
   }
 }
 
@@ -259,49 +342,58 @@ function generateInputKey(input, index) {
 }
 
 // Enhanced form restoration
-async function restoreFormData(formData) {
-  if (!formData || typeof formData !== 'object') return;
+function restoreFormData(formData) {
+  if (!formData || typeof formData !== 'object') return Promise.resolve();
   
   const metadata = formData._metadata;
   delete formData._metadata;
   
-  // Restore each input
-  Object.entries(formData).forEach(([key, inputData]) => {
-    if (key === '_metadata') return;
-    
+  return new Promise((resolve, reject) => {
     try {
-      // Find the input element
-      const input = findInputByKey(key, inputData);
-      if (!input) return;
-      
-      // Restore the value based on input type
-      switch (inputData.type) {
-        case 'checkbox':
-        case 'radio':
-          input.checked = inputData.value;
-          break;
-        case 'file':
-          // Can't restore file inputs, just skip
-          break;
-        case 'password':
-          // Don't restore passwords for security
-          break;
-        default:
-          input.value = inputData.value;
+      // Restore each input
+      Object.entries(formData).forEach(([key, inputData]) => {
+        if (key === '_metadata') return;
+        
+        try {
+          // Find the input element
+          const input = findInputByKey(key, inputData);
+          if (!input) return;
           
-          // Trigger change events for better compatibility
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+          // Restore the value based on input type
+          switch (inputData.type) {
+            case 'checkbox':
+            case 'radio':
+              input.checked = inputData.value;
+              break;
+            case 'file':
+              // Can't restore file inputs, just skip
+              break;
+            case 'password':
+              // Don't restore passwords for security
+              break;
+            default:
+              input.value = inputData.value;
+              
+              // Trigger change events for better compatibility
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } catch (error) {
+          console.warn(`Failed to restore input ${key}:`, error);
+        }
+      });
+      
+      // Trigger form events for better compatibility
+      detectedForms.forEach(formInfo => {
+        if (formInfo.element) {
+          formInfo.element.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      
+      resolve();
     } catch (error) {
-      console.warn(`Failed to restore input ${key}:`, error);
-    }
-  });
-  
-  // Trigger form events for better compatibility
-  detectedForms.forEach(formInfo => {
-    if (formInfo.element) {
-      formInfo.element.dispatchEvent(new Event('change', { bubbles: true }));
+      console.error('Error in restoreFormData:', error);
+      reject(error);
     }
   });
 }
@@ -353,60 +445,72 @@ async function checkAutoRestore() {
 }
 
 // Statistics tracking
-async function trackStatistics(action, data) {
+function trackStatistics(action, data) {
   try {
-    const result = await browser.storage.local.get('statistics');
-    let statistics = result.statistics || {
-      totalSaved: 0,
-      totalRestored: 0,
-      uniqueDomains: [],
-      domainStats: {},
-      history: []
-    };
-    
-    const url = data.metadata?.url || window.location.href;
-    const domain = data.metadata?.domain || new URL(url).hostname;
-    
-    if (action === 'save') {
-      statistics.totalSaved++;
-    } else if (action === 'restore') {
-      statistics.totalRestored++;
-    }
-    
-    // Update domain statistics
-    if (!statistics.domainStats[domain]) {
-      statistics.domainStats[domain] = { saves: 0, restores: 0 };
-    }
-    
-    if (action === 'save') {
-      statistics.domainStats[domain].saves++;
-    } else if (action === 'restore') {
-      statistics.domainStats[domain].restores++;
-    }
-    
-    // Update unique domains
-    if (!statistics.uniqueDomains.includes(domain)) {
-      statistics.uniqueDomains.push(domain);
-    }
-    
-    // Add to history
-    statistics.history.unshift({
-      url: url,
-      domain: domain,
-      action: action,
-      timestamp: Date.now(),
-      formCount: data.metadata?.formCount || 0
+    return browser.storage.local.get(['statistics', 'settings']).then((result) => {
+      let statistics = result.statistics || {
+        totalSaved: 0,
+        totalRestored: 0,
+        uniqueDomains: [],
+        domainStats: {},
+        history: []
+      };
+      
+      const settings = result.settings || {};
+      
+      // Check if statistics are enabled
+      if (!settings.enableStatistics) {
+        return Promise.resolve();
+      }
+      
+      const url = data.metadata?.url || window.location.href;
+      const domain = data.metadata?.domain || new URL(url).hostname;
+      
+      if (action === 'save') {
+        statistics.totalSaved++;
+      } else if (action === 'restore') {
+        statistics.totalRestored++;
+      }
+      
+      // Update domain statistics
+      if (!statistics.domainStats[domain]) {
+        statistics.domainStats[domain] = { saves: 0, restores: 0 };
+      }
+      
+      if (action === 'save') {
+        statistics.domainStats[domain].saves++;
+      } else if (action === 'restore') {
+        statistics.domainStats[domain].restores++;
+      }
+      
+      // Update unique domains
+      if (!statistics.uniqueDomains.includes(domain)) {
+        statistics.uniqueDomains.push(domain);
+      }
+      
+      // Add to history if enabled
+      if (settings.enableHistory) {
+        statistics.history.unshift({
+          url: url,
+          domain: domain,
+          action: action,
+          timestamp: Date.now(),
+          formCount: data.metadata?.formCount || 0,
+          isPrivate: isPrivateBrowsing
+        });
+        
+        // Keep only last 100 history items
+        if (statistics.history.length > 100) {
+          statistics.history = statistics.history.slice(0, 100);
+        }
+      }
+      
+      return browser.storage.local.set({ statistics });
     });
-    
-    // Keep only last 100 history items
-    if (statistics.history.length > 100) {
-      statistics.history = statistics.history.slice(0, 100);
-    }
-    
-    await browser.storage.local.set({ statistics });
     
   } catch (error) {
     console.error('Error tracking statistics:', error);
+    return Promise.reject(error);
   }
 }
 

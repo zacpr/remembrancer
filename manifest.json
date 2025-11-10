@@ -21,8 +21,7 @@
     "activeTab",
     "storage",
     "notifications",
-    "contextMenus",
-    "commands"
+    "contextMenus"
   ],
   "background": {
     "scripts": ["background.js"],
