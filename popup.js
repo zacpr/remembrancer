@@ -56,66 +56,20 @@ function initializeTabs() {
 
 // Initialize action buttons with enhanced functionality
 function initializeActionButtons() {
-  // Handshake function to check for content script readiness
-  async function handshake(tabId) {
-    try {
-      const response = await browser.tabs.sendMessage(tabId, { action: 'ping' });
-      return response && response.action === 'pong';
-    } catch (error) {
-      console.error('Handshake failed:', error);
-      return false;
-    }
-  }
-
-  // Save button - simplified direct approach with better error handling
+  // Save button - sends message to background script
   document.getElementById('save-button').addEventListener('click', async () => {
-    console.log('Save button clicked - using simplified approach');
+    console.log('Save button clicked - sending message to background script');
     showLoading(true);
     
     try {
-      // Get current tab directly
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (!tabs[0]) {
-        showToast('No active tab found', 'error');
-        showLoading(false);
-        return;
-      }
+      const response = await browser.runtime.sendMessage({ action: 'save' });
+      console.log('Response from background script:', response);
       
-      const currentTab = tabs[0];
-      console.log('Current tab:', currentTab.url);
-      
-      // Check if we can communicate with content script
-      if (!await handshake(currentTab.id)) {
-        showToast('Content script not ready. Please refresh the page and try again.', 'error');
-        showLoading(false);
-        return;
-      }
-      
-      try {
-        // Get form data directly from content script
-        const response = await browser.tabs.sendMessage(currentTab.id, { action: 'save' });
-        console.log('Form data received:', response);
-        
-        if (!response || !response.success) {
-          showToast('No form data to save', 'error');
-          showLoading(false);
-          return;
-        }
-        
-        console.log('Save verified successfully');
-        await recordStatistics('save');
+      if (response && response.success) {
         showToast('Form state saved successfully!', 'success');
         setTimeout(updateButtonStates, 100);
-        
-      } catch (messageError) {
-        console.error('Error communicating with content script:', messageError);
-        if (messageError.message.includes('Receiving end does not exist')) {
-          showToast('Content script not loaded. Please refresh the page and try again.', 'error');
-        } else if (messageError.message.includes('Could not establish connection')) {
-          showToast('Cannot connect to content script. Please refresh the page.', 'error');
-        } else {
-          showToast(`Communication error: ${messageError.message}`, 'error');
-        }
+      } else {
+        showToast(`Save failed: ${response?.error || 'Unknown error'}`, 'error');
       }
       
     } catch (error) {
@@ -126,55 +80,19 @@ function initializeActionButtons() {
     }
   });
 
-  // Restore button - simplified direct approach with better error handling
+  // Restore button - sends message to background script
   document.getElementById('restore-button').addEventListener('click', async () => {
-    console.log('Restore button clicked - using simplified approach');
+    console.log('Restore button clicked - sending message to background script');
     showLoading(true);
     
     try {
-      // Get current tab directly
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (!tabs[0]) {
-        showToast('No active tab found', 'error');
-        showLoading(false);
-        return;
-      }
+      const response = await browser.runtime.sendMessage({ action: 'restore' });
+      console.log('Response from background script:', response);
       
-      const currentTab = tabs[0];
-      console.log('Current tab for restore:', currentTab.url);
-      
-      // Check if we can communicate with content script
-      if (!await handshake(currentTab.id)) {
-        showToast('Content script not ready. Please refresh the page and try again.', 'error');
-        showLoading(false);
-        return;
-      }
-      
-      try {
-        
-        // Send restore data to content script
-        const restoreResponse = await browser.tabs.sendMessage(currentTab.id, {
-          action: 'restore'
-        });
-        console.log('Restore response from content:', restoreResponse);
-        
-        if (restoreResponse && restoreResponse.success) {
-          console.log('Restore successful');
-          await recordStatistics('restore');
-          showToast('Form state restored successfully!', 'success');
-        } else {
-          showToast('Failed to restore form data', 'error');
-        }
-        
-      } catch (messageError) {
-        console.error('Error communicating with content script:', messageError);
-        if (messageError.message.includes('Receiving end does not exist')) {
-          showToast('Content script not loaded. Please refresh the page and try again.', 'error');
-        } else if (messageError.message.includes('Could not establish connection')) {
-          showToast('Cannot connect to content script. Please refresh the page.', 'error');
-        } else {
-          showToast(`Communication error: ${messageError.message}`, 'error');
-        }
+      if (response && response.success) {
+        showToast('Form state restored successfully!', 'success');
+      } else {
+        showToast(`Restore failed: ${response?.error || 'Unknown error'}`, 'error');
       }
       
     } catch (error) {

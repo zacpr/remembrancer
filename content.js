@@ -124,48 +124,29 @@ function setupMessageListeners() {
         sendResponse({ action: 'pong' });
         break;
         
-      case 'save':
-        handleSaveAction().then(() => {
-          console.log('Content: Save completed successfully');
-          sendResponse({ success: true });
-        }).catch((error) => {
-          console.error('Content: Save action failed:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-        return true; // Keep message channel open for async response
-        
-      case 'restore':
-        handleRestoreAction().then(() => {
-          console.log('Content: Restore completed successfully');
-          sendResponse({ success: true });
-        }).catch((error) => {
-          console.error('Content: Restore action failed:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-        return true; // Keep message channel open for async response
+      case 'getFormData':
+        const formData = getFormData();
+        console.log('Content: Form data requested, returning:', formData);
+        sendResponse({ data: formData });
+        break;
         
       case 'restoreFormData':
         try {
           console.log('Content: Restoring form data directly:', message.data);
-          await restoreFormData(message.data);
-          showRestoreFeedback();
-          sendResponse({ success: true });
+          restoreFormData(message.data).then(() => {
+            showRestoreFeedback();
+            sendResponse({ success: true });
+          });
         } catch (error) {
           console.error('Content: Direct restore failed:', error);
           sendResponse({ success: false, error: error.message });
         }
-        break;
+        return true; // Keep message channel open for async response
         
       case 'countForms':
         const count = detectForms();
         console.log('Content: Form count requested, returning:', count);
         sendResponse({ count });
-        break;
-        
-      case 'getFormData':
-        const formData = getFormData();
-        console.log('Content: Form data requested, returning:', formData);
-        sendResponse({ data: formData });
         break;
         
       default:
@@ -175,114 +156,7 @@ function setupMessageListeners() {
   });
 }
 
-// Enhanced save functionality with statistics
-function handleSaveAction() {
-  try {
-    console.log('Content: Starting save action...');
-    
-    // First detect forms to ensure we have current data
-    detectForms();
-    
-    // Check if we have any forms to save
-    if (detectedForms.length === 0) {
-      console.log('Content: No forms detected on page');
-      return Promise.reject(new Error('No forms found on this page to save'));
-    }
-    
-    const formData = getFormData();
-    const url = window.location.href;
-    const timestamp = Date.now();
-    
-    console.log('Content: Form data extracted:', formData);
-    console.log('Content: Detected forms count:', detectedForms.length);
-    
-    // Check if we have any form data to save
-    const hasFormData = formData && Object.keys(formData).length > 1; // More than just _metadata
-    if (!hasFormData) {
-      console.log('Content: No form data to save');
-      return Promise.reject(new Error('No form data found to save'));
-    }
-    
-    // Enhanced data structure with metadata
-    const saveData = {
-      formData: formData,
-      metadata: {
-        url: url,
-        domain: new URL(url).hostname,
-        title: document.title,
-        timestamp: timestamp,
-        formCount: detectedForms.length,
-        userAgent: navigator.userAgent.substring(0, 100) // Truncated for privacy
-      }
-    };
-    
-    console.log('Content: Saving data to storage:', saveData);
-    
-    // Save to storage
-    return browser.storage.local.set({ [url]: saveData }).then(() => {
-      console.log('Content: Data saved to storage successfully');
-      
-      // Verify it was saved
-      return browser.storage.local.get(url).then((verifyResult) => {
-        console.log('Content: Verification - saved data:', verifyResult);
-        
-        if (!verifyResult[url]) {
-          console.error('Content: Failed to verify saved data in storage');
-          return Promise.reject(new Error('Failed to verify saved data in storage'));
-        }
-        
-        // Add visual feedback
-        showSaveFeedback();
-        
-        // Track statistics
-        return trackStatistics('save', saveData).then(() => {
-          console.log('Content: Form state saved successfully with enhanced data');
-        });
-      });
-    });
-    
-  } catch (error) {
-    console.error('Content: Error saving form state:', error);
-    return Promise.reject(error);
-  }
-}
 
-// Enhanced restore functionality
-function handleRestoreAction() {
-  try {
-    console.log('Content: Starting restore action...');
-    const url = window.location.href;
-    console.log('Content: Current URL for restore:', url);
-    
-    return browser.storage.local.get(url).then((result) => {
-      console.log('Content: Retrieved data from storage:', result);
-      
-      const saveData = result[url];
-      
-      if (saveData && saveData.formData) {
-        console.log('Content: Found saved data, restoring form data:', saveData.formData);
-        
-        return restoreFormData(saveData.formData).then(() => {
-          // Add visual feedback
-          showRestoreFeedback();
-          
-          // Track statistics
-          return trackStatistics('restore', saveData).then(() => {
-            console.log('Content: Form state restored successfully');
-          });
-        });
-      } else {
-        console.log('Content: No form data found for current URL');
-        console.log('Content: Available keys in storage:', Object.keys(result));
-        return Promise.reject(new Error('No saved form data found for this page'));
-      }
-    });
-    
-  } catch (error) {
-    console.error('Content: Error restoring form state:', error);
-    return Promise.reject(error);
-  }
-}
 
 // Enhanced form data extraction
 function getFormData() {

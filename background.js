@@ -16,13 +16,13 @@ async function handleMessage(message, sender, sendResponse) {
   try {
     switch (message.action) {
       case 'save':
-        await handleSaveAction(sender);
-        sendResponse({ success: true });
+        const saveResult = await handleSaveAction(sender);
+        sendResponse(saveResult);
         break;
         
       case 'restore':
-        await handleRestoreAction(sender);
-        sendResponse({ success: true });
+        const restoreResult = await handleRestoreAction(sender);
+        sendResponse(restoreResult);
         break;
         
       case 'getStatistics':
@@ -71,30 +71,31 @@ async function handleSaveAction(sender) {
   try {
     console.log('Background: Tab ID:', sender.tab.id, 'URL:', sender.tab.url);
     
-    // Check if private browsing
-    if (sender.tab.incognito) {
-      console.log('Background: Private browsing mode detected');
-      await showNotification('🔒 Private Mode', 'Form saved in private browsing mode', 'warning');
-    }
+    // Get form data from content script
+    const response = await browser.tabs.sendMessage(sender.tab.id, { action: 'getFormData' });
     
-    // Send save message to content script and wait for response
-    console.log('Background: Sending save message to content script');
-    const response = await browser.tabs.sendMessage(sender.tab.id, { action: 'save' });
-    console.log('Background: Received response from content script:', response);
-    
-    if (response && response.success) {
-      // Update badge to indicate save
-      await updateBadge('saved', sender.tab.id);
+    if (response && response.data) {
+      const url = sender.tab.url;
+      const saveData = {
+        formData: response.data,
+        metadata: {
+          url: url,
+          domain: new URL(url).hostname,
+          title: sender.tab.title,
+          timestamp: Date.now(),
+          formCount: response.data._metadata.totalInputs,
+          userAgent: navigator.userAgent.substring(0, 100)
+        }
+      };
       
-      // Show notification if enabled
+      await browser.storage.local.set({ [url]: saveData });
       await showNotification('Form Saved', 'Form state has been saved successfully', 'save');
+      await updateBadge('saved', sender.tab.id);
       
       console.log('Background: Save action completed successfully');
       return { success: true };
     } else {
-      const errorMsg = response?.error || 'Save operation failed in content script';
-      console.error('Background: Save action failed:', errorMsg);
-      return { success: false, error: errorMsg };
+      return { success: false, error: 'No form data received from content script' };
     }
   } catch (error) {
     console.error('Background: Error in save action:', error);
@@ -112,32 +113,28 @@ async function handleRestoreAction(sender) {
   }
   
   try {
-    console.log('Background: Tab ID:', sender.tab.id, 'URL:', sender.tab.url);
+    const url = sender.tab.url;
+    console.log('Background: Tab ID:', sender.tab.id, 'URL:', url);
     
-    // Check if private browsing
-    if (sender.tab.incognito) {
-      console.log('Background: Private browsing mode detected');
-      await showNotification('🔒 Private Mode', 'Form restored in private browsing mode', 'warning');
-    }
+    const result = await browser.storage.local.get(url);
+    const saveData = result[url];
     
-    // Send restore message to content script and wait for response
-    console.log('Background: Sending restore message to content script');
-    const response = await browser.tabs.sendMessage(sender.tab.id, { action: 'restore' });
-    console.log('Background: Received response from content script:', response);
-    
-    if (response && response.success) {
-      // Update badge to indicate restore
-      await updateBadge('restored', sender.tab.id);
+    if (saveData && saveData.formData) {
+      const response = await browser.tabs.sendMessage(sender.tab.id, {
+        action: 'restoreFormData',
+        data: saveData.formData
+      });
       
-      // Show notification if enabled
-      await showNotification('Form Restored', 'Form state has been restored successfully', 'restore');
-      
-      console.log('Background: Restore action completed successfully');
-      return { success: true };
+      if (response && response.success) {
+        await showNotification('Form Restored', 'Form state has been restored successfully', 'restore');
+        await updateBadge('restored', sender.tab.id);
+        console.log('Background: Restore action completed successfully');
+        return { success: true };
+      } else {
+        return { success: false, error: 'Failed to restore form data in content script' };
+      }
     } else {
-      const errorMsg = response?.error || 'Restore operation failed in content script';
-      console.error('Background: Restore action failed:', errorMsg);
-      return { success: false, error: errorMsg };
+      return { success: false, error: 'No saved form data found for this page' };
     }
   } catch (error) {
     console.error('Background: Error in restore action:', error);
