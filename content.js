@@ -1,412 +1,355 @@
 // Enhanced content script with statistics tracking and improved form detection
 
-// Global variables
-let formObserver = null;
-let detectedForms = [];
-let lastSaveTime = 0;
-let isPrivateBrowsing = false;
+// Global guard to prevent re-declaration errors
+if (!window.formRemembrancerLoaded) {
+  window.formRemembrancerLoaded = true;
 
-// Initialize content script
-(function() {
-  console.log('Form State Remembrancer - Enhanced Content Script Loaded');
-  
-  // Check private browsing mode
-  checkPrivateBrowsing();
-  
-  // Initial form detection
-  detectForms();
-  
-  // Set up mutation observer for dynamic forms
-  setupFormObserver();
-  
-  // Set up message listeners
-  setupMessageListeners();
-  
-  // Auto-restore if enabled
-  checkAutoRestore();
-})();
+  // Global variables
+  let formObserver = null;
+  let detectedForms = [];
 
-// Form detection with improved accuracy
-function detectForms() {
-  detectedForms = [];
-  
-  // Find all form elements
-  const forms = document.querySelectorAll('form');
-  console.log(`Found ${forms.length} <form> elements`);
-  
-  forms.forEach((form, index) => {
-    const formInfo = {
-      element: form,
-      index: index,
-      id: form.id || `form-${index}`,
-      action: form.action,
-      method: form.method,
-      inputCount: form.querySelectorAll('input, textarea, select').length
-    };
-    detectedForms.push(formInfo);
-    console.log(`Form ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
-  });
-  
-  // Also find form-like elements that might not be in <form> tags
-  const formContainers = document.querySelectorAll('[role="form"], .form, .login-form, .signup-form');
-  console.log(`Found ${formContainers.length} form-like containers`);
-  
-  formContainers.forEach((container, index) => {
-    if (!forms.includes(container)) {
+  // Initialize content script
+  (function () {
+    console.log('Form State Remembrancer - Enhanced Content Script Loaded');
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+
+  function init() {
+    detectForms();
+    setupFormObserver();
+    setupMessageListeners();
+    checkAutoRestore();
+  }
+
+  // Form detection with improved accuracy
+  function detectForms() {
+    detectedForms = [];
+
+    // Find all form elements
+    const forms = Array.from(document.querySelectorAll('form'));
+    console.log(`Found ${forms.length} <form> elements`);
+
+    forms.forEach((form, index) => {
       const formInfo = {
-        element: container,
-        index: forms.length + index,
-        id: container.id || `container-${index}`,
-        action: 'container',
-        method: 'container',
-        inputCount: container.querySelectorAll('input, textarea, select').length
+        element: form,
+        index: index,
+        id: form.id || `form-${index}`,
+        action: form.action,
+        method: form.method,
+        inputCount: form.querySelectorAll('input, textarea, select').length
       };
       detectedForms.push(formInfo);
-      console.log(`Container ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
-    }
-  });
-  
-  console.log(`Total detected forms: ${detectedForms.length}`);
-  return detectedForms.length;
-}
+      console.log(`Form ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
+    });
 
-// Set up mutation observer for dynamic content
-function setupFormObserver() {
-  if (formObserver) {
-    formObserver.disconnect();
+    // Also find form-like elements that might not be in <form> tags
+    const formContainers = document.querySelectorAll('[role="form"], .form, .login-form, .signup-form');
+    console.log(`Found ${formContainers.length} form-like containers`);
+
+    formContainers.forEach((container, index) => {
+      if (!forms.includes(container)) {
+        const formInfo = {
+          element: container,
+          index: forms.length + index,
+          id: container.id || `container-${index}`,
+          action: 'container',
+          method: 'container',
+          inputCount: container.querySelectorAll('input, textarea, select').length
+        };
+        detectedForms.push(formInfo);
+        console.log(`Container ${index}: id=${formInfo.id}, inputs=${formInfo.inputCount}`);
+      }
+    });
+
+    console.log(`Total detected forms: ${detectedForms.length}`);
+    return detectedForms.length;
   }
-  
-  formObserver = new MutationObserver((mutations) => {
-    let shouldRedetect = false;
-    
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
-        // Check if any forms were added or removed
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.tagName === 'FORM' || 
-                node.querySelector('form') || 
+
+  // Set up mutation observer for dynamic content
+  function setupFormObserver() {
+    if (formObserver) {
+      formObserver.disconnect();
+    }
+
+    formObserver = new MutationObserver((mutations) => {
+      let shouldRedetect = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          // Check if any forms were added or removed
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              if (node.tagName === 'FORM' ||
+                node.querySelector('form') ||
                 node.querySelector('[role="form"]') ||
                 node.querySelector('input, textarea, select')) {
-              shouldRedetect = true;
+                shouldRedetect = true;
+              }
             }
-          }
-        });
-        
-        mutation.removedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.tagName === 'FORM' || node.querySelector('form')) {
-              shouldRedetect = true;
-            }
-          }
-        });
-      }
-    });
-    
-    if (shouldRedetect) {
-      setTimeout(detectForms, 100);
-    }
-  });
-  
-  formObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-}
-
-// Enhanced message handling
-function setupMessageListeners() {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Content: Received message:', message.action);
-    
-    switch (message.action) {
-      case 'ping':
-        sendResponse({ action: 'pong' });
-        break;
-        
-      case 'getFormData':
-        const formData = getFormData();
-        console.log('Content: Form data requested, returning:', formData);
-        sendResponse({ data: formData });
-        break;
-        
-      case 'restoreFormData':
-        try {
-          console.log('Content: Restoring form data directly:', message.data);
-          restoreFormData(message.data).then(() => {
-            showRestoreFeedback();
-            sendResponse({ success: true });
           });
-        } catch (error) {
-          console.error('Content: Direct restore failed:', error);
-          sendResponse({ success: false, error: error.message });
-        }
-        return true; // Keep message channel open for async response
-        
-      case 'countForms':
-        const count = detectForms();
-        console.log('Content: Form count requested, returning:', count);
-        sendResponse({ count });
-        break;
-        
-      default:
-        console.log('Content: Unknown action:', message.action);
-        sendResponse({ success: false, error: 'Unknown action' });
-    }
-  });
-}
 
-
-
-// Enhanced form data extraction
-function getFormData() {
-  const allInputs = document.querySelectorAll('input, textarea, select');
-  const data = {};
-  const metadata = {
-    totalInputs: allInputs.length,
-    timestamp: Date.now()
-  };
-  
-  allInputs.forEach((input, index) => {
-    // Create a more robust key generation
-    const key = generateInputKey(input, index);
-    
-    let value;
-    switch (input.type) {
-      case 'checkbox':
-      case 'radio':
-        value = input.checked;
-        break;
-      case 'file':
-        // Don't store file data, just indicate that a file was selected
-        value = input.files.length > 0 ? '[FILE_SELECTED]' : '';
-        break;
-      case 'password':
-        // Mask passwords for security
-        value = input.value ? '[PASSWORD]' : '';
-        break;
-      default:
-        value = input.value;
-    }
-    
-    // Store additional metadata for each input
-    data[key] = {
-      value: value,
-      type: input.type,
-      tagName: input.tagName,
-      name: input.name,
-      id: input.id,
-      className: input.className,
-      index: index
-    };
-  });
-  
-  // Add metadata
-  data['_metadata'] = metadata;
-  
-  return data;
-}
-
-// Generate robust input keys
-function generateInputKey(input, index) {
-  const parts = [
-    input.tagName.toLowerCase(),
-    input.type || 'text',
-    input.name || input.id || `unnamed-${index}`,
-    index
-  ];
-  
-  return parts.join('_');
-}
-
-// Enhanced form restoration
-function restoreFormData(formData) {
-  if (!formData || typeof formData !== 'object') return Promise.resolve();
-  
-  const metadata = formData._metadata;
-  delete formData._metadata;
-  
-  return new Promise((resolve, reject) => {
-    try {
-      // Restore each input
-      Object.entries(formData).forEach(([key, inputData]) => {
-        if (key === '_metadata') return;
-        
-        try {
-          // Find the input element
-          const input = findInputByKey(key, inputData);
-          if (!input) return;
-          
-          // Restore the value based on input type
-          switch (inputData.type) {
-            case 'checkbox':
-            case 'radio':
-              input.checked = inputData.value;
-              break;
-            case 'file':
-              // Can't restore file inputs, just skip
-              break;
-            case 'password':
-              // Don't restore passwords for security
-              break;
-            default:
-              input.value = inputData.value;
-              
-              // Trigger change events for better compatibility
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        } catch (error) {
-          console.warn(`Failed to restore input ${key}:`, error);
+          mutation.removedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              if (node.tagName === 'FORM' || node.querySelector('form')) {
+                shouldRedetect = true;
+              }
+            }
+          });
         }
       });
-      
-      // Trigger form events for better compatibility
-      detectedForms.forEach(formInfo => {
-        if (formInfo.element) {
-          formInfo.element.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-      
-      resolve();
-    } catch (error) {
-      console.error('Error in restoreFormData:', error);
-      reject(error);
-    }
-  });
-}
 
-// Find input element by key
-function findInputByKey(key, inputData) {
-  // Try to find by ID first
-  if (inputData.id) {
-    const element = document.getElementById(inputData.id);
-    if (element) return element;
-  }
-  
-  // For radio buttons, we need to match both name and value
-  if (inputData.type === 'radio' && inputData.name) {
-    const radioButtons = document.querySelectorAll(`input[type="radio"][name="${inputData.name}"]`);
-    for (const radio of radioButtons) {
-      if (radio.value === inputData.value) {
-        return radio;
+      if (shouldRedetect) {
+        setTimeout(detectForms, 100);
       }
-    }
-  }
-
-  // Try to find by name
-  if (inputData.name) {
-    const element = document.querySelector(`[name="${inputData.name}"]`);
-    if (element) return element;
-  }
-  
-  // Try to find by type and index
-  const allInputs = document.querySelectorAll(`${inputData.tagName.toLowerCase()}[type="${inputData.type}"]`);
-  if (allInputs[inputData.index]) {
-    return allInputs[inputData.index];
-  }
-  
-  // Fallback: try to find by class name
-  if (inputData.className) {
-    const element = document.querySelector(`.${inputData.className.split(' ')[0]}`);
-    if (element) return element;
-  }
-  
-  return null;
-}
-
-// Auto-restore functionality
-async function checkAutoRestore() {
-  try {
-    const result = await browser.storage.local.get('autoRestore');
-    const autoRestore = result.autoRestore || {};
-    
-    if (autoRestore[window.location.href]) {
-      // Wait a bit for the page to fully load
-      setTimeout(async () => {
-        await handleRestoreAction();
-      }, 1000);
-    }
-  } catch (error) {
-    console.error('Error checking auto-restore:', error);
-  }
-}
-
-// Statistics tracking
-function trackStatistics(action, data) {
-  try {
-    return browser.storage.local.get(['statistics', 'settings']).then((result) => {
-      let statistics = result.statistics || {
-        totalSaved: 0,
-        totalRestored: 0,
-        uniqueDomains: [],
-        domainStats: {},
-        history: []
-      };
-      
-      const settings = result.settings || {};
-      
-      // Check if statistics are enabled
-      if (!settings.enableStatistics) {
-        return Promise.resolve();
-      }
-      
-      const url = data.metadata?.url || window.location.href;
-      const domain = data.metadata?.domain || new URL(url).hostname;
-      
-      if (action === 'save') {
-        statistics.totalSaved++;
-      } else if (action === 'restore') {
-        statistics.totalRestored++;
-      }
-      
-      // Update domain statistics
-      if (!statistics.domainStats[domain]) {
-        statistics.domainStats[domain] = { saves: 0, restores: 0 };
-      }
-      
-      if (action === 'save') {
-        statistics.domainStats[domain].saves++;
-      } else if (action === 'restore') {
-        statistics.domainStats[domain].restores++;
-      }
-      
-      // Update unique domains
-      if (!statistics.uniqueDomains.includes(domain)) {
-        statistics.uniqueDomains.push(domain);
-      }
-      
-      // Add to history if enabled
-      if (settings.enableHistory) {
-        statistics.history.unshift({
-          url: url,
-          domain: domain,
-          action: action,
-          timestamp: Date.now(),
-          formCount: data.metadata?.formCount || 0,
-          isPrivate: isPrivateBrowsing
-        });
-        
-        // Keep only last 100 history items
-        if (statistics.history.length > 100) {
-          statistics.history = statistics.history.slice(0, 100);
-        }
-      }
-      
-      return browser.storage.local.set({ statistics });
     });
-    
-  } catch (error) {
-    console.error('Error tracking statistics:', error);
-    return Promise.reject(error);
-  }
-}
 
-// Visual feedback functions
-function showSaveFeedback() {
-  // Create a subtle visual indicator
-  const indicator = document.createElement('div');
-  indicator.style.cssText = `
+    formObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // Enhanced message handling
+  function setupMessageListeners() {
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      console.log('Content: Received message:', message.action);
+
+      switch (message.action) {
+        case 'ping':
+          sendResponse({ action: 'pong' });
+          break;
+
+        case 'getFormData':
+          const formData = getFormData();
+          console.log('Content: Form data requested, returning:', formData);
+          sendResponse({ data: formData });
+          break;
+
+        case 'restoreFormData':
+          try {
+            console.log('Content: Restoring form data directly:', message.data);
+            restoreFormData(message.data).then(() => {
+              showRestoreFeedback();
+              sendResponse({ success: true });
+            });
+          } catch (error) {
+            console.error('Content: Direct restore failed:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+          return true; // Keep message channel open for async response
+
+        case 'countForms':
+          const count = detectForms();
+          console.log('Content: Form count requested, returning:', count);
+          sendResponse({ count });
+          break;
+
+        default:
+          console.log('Content: Unknown action:', message.action);
+          sendResponse({ success: false, error: 'Unknown action' });
+      }
+    });
+  }
+
+
+
+  // Enhanced form data extraction
+  function getFormData() {
+    const allInputs = document.querySelectorAll('input, textarea, select');
+    const data = {};
+    const metadata = {
+      totalInputs: allInputs.length,
+      timestamp: Date.now()
+    };
+
+    allInputs.forEach((input, index) => {
+      // Create a more robust key generation
+      const key = generateInputKey(input, index);
+
+      let value;
+      switch (input.type) {
+        case 'checkbox':
+        case 'radio':
+          value = input.checked;
+          break;
+        case 'file':
+          // Don't store file data, just indicate that a file was selected
+          value = input.files.length > 0 ? '[FILE_SELECTED]' : '';
+          break;
+        case 'password':
+          // Mask passwords for security
+          value = input.value ? '[PASSWORD]' : '';
+          break;
+        default:
+          value = input.value;
+      }
+
+      // Store additional metadata for each input
+      data[key] = {
+        value: value,
+        checkValue: input.value, // Store HTML value for identification
+        type: input.type,
+        tagName: input.tagName,
+        name: input.name,
+        id: input.id,
+        className: input.className,
+        index: index
+      };
+    });
+
+    // Add metadata
+    data['_metadata'] = metadata;
+
+    return data;
+  }
+
+  // Generate robust input keys
+  function generateInputKey(input, index) {
+    const parts = [
+      input.tagName.toLowerCase(),
+      input.type || 'text',
+      input.name || input.id || `unnamed-${index}`,
+      index
+    ];
+
+    return parts.join('_');
+  }
+
+  // Enhanced form restoration
+  function restoreFormData(formData) {
+    if (!formData || typeof formData !== 'object') return Promise.resolve();
+
+    const metadata = formData._metadata;
+    delete formData._metadata;
+
+    return new Promise((resolve, reject) => {
+      try {
+        // Restore each input
+        Object.entries(formData).forEach(([key, inputData]) => {
+          if (key === '_metadata') return;
+
+          try {
+            // Find the input element
+            const input = findInputByKey(key, inputData);
+            if (!input) return;
+
+            // Restore the value based on input type
+            switch (inputData.type) {
+              case 'checkbox':
+              case 'radio':
+                input.checked = inputData.value;
+                break;
+              case 'file':
+                // Can't restore file inputs, just skip
+                break;
+              case 'password':
+                // Don't restore passwords for security
+                break;
+              default:
+                input.value = inputData.value;
+
+                // Trigger change events for better compatibility
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          } catch (error) {
+            console.warn(`Failed to restore input ${key}:`, error);
+          }
+        });
+
+        // Trigger form events for better compatibility
+        detectedForms.forEach(formInfo => {
+          if (formInfo.element) {
+            formInfo.element.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+
+        resolve();
+      } catch (error) {
+        console.error('Error in restoreFormData:', error);
+        reject(error);
+      }
+    });
+  }
+
+  // Find input element by key
+  function findInputByKey(key, inputData) {
+    // 1. Try to find by ID first (most specific)
+    if (inputData.id) {
+      const element = document.getElementById(inputData.id);
+      if (element) return element;
+    }
+
+    // 2. For radio buttons and checkboxes, we need to match the specific option
+    // Use getElementsByName for safety against quotes/special chars in names
+    if ((inputData.type === 'radio' || inputData.type === 'checkbox') && inputData.name) {
+      const elements = document.getElementsByName(inputData.name);
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        // Match type and HTML value (e.g. "all_terms")
+        // Check for checkValue existence to support backward compatibility
+        if (el.type === inputData.type &&
+          inputData.checkValue !== undefined &&
+          el.value === inputData.checkValue) {
+          return el;
+        }
+      }
+    }
+
+    // 3. Try to find by name
+    if (inputData.name) {
+      const elements = document.getElementsByName(inputData.name);
+      if (elements.length === 1) {
+        return elements[0];
+      }
+      // If multiple elements have the same name, we can't be sure which one it is.
+      // Fall through to index matching.
+    }
+
+    // 4. Fallback: try to find by global index
+    // This must match the selector used in getFormData
+    const allInputs = document.querySelectorAll('input, textarea, select');
+    if (allInputs[inputData.index]) {
+      // Double check that it looks like the right element
+      const el = allInputs[inputData.index];
+      if (el.tagName === inputData.tagName && el.type === inputData.type) {
+        return el;
+      }
+    }
+
+    return null;
+  }
+
+  // Auto-restore functionality
+  async function checkAutoRestore() {
+    try {
+      const result = await browser.storage.local.get('autoRestore');
+      const autoRestore = result.autoRestore || {};
+
+      if (autoRestore[window.location.href]) {
+        // Wait a bit for the page to fully load
+        setTimeout(async () => {
+          console.log('Content: Triggering auto-restore');
+          await browser.runtime.sendMessage({ action: 'restore' });
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error checking auto-restore:', error);
+    }
+  }
+
+
+
+  // Visual feedback functions
+  function showSaveFeedback() {
+    // Create a subtle visual indicator
+    const indicator = document.createElement('div');
+    indicator.style.cssText = `
     position: fixed;
     top: 20px;
     right: 20px;
@@ -420,24 +363,24 @@ function showSaveFeedback() {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     z-index: 10000;
     animation: slideInRight 0.3s ease;
-  `;
-  indicator.textContent = '✓ Form saved';
-  
-  document.body.appendChild(indicator);
-  
-  setTimeout(() => {
-    indicator.style.animation = 'slideOutRight 0.3s ease';
-    setTimeout(() => {
-      if (indicator.parentNode) {
-        indicator.parentNode.removeChild(indicator);
-      }
-    }, 300);
-  }, 2000);
-}
+    `;
+    indicator.textContent = '✓ Form saved';
 
-function showRestoreFeedback() {
-  const indicator = document.createElement('div');
-  indicator.style.cssText = `
+    document.body.appendChild(indicator);
+
+    setTimeout(() => {
+      indicator.style.animation = 'slideOutRight 0.3s ease';
+      setTimeout(() => {
+        if (indicator.parentNode) {
+          indicator.parentNode.removeChild(indicator);
+        }
+      }, 300);
+    }, 2000);
+  }
+
+  function showRestoreFeedback() {
+    const indicator = document.createElement('div');
+    indicator.style.cssText = `
     position: fixed;
     top: 20px;
     right: 20px;
@@ -451,60 +394,61 @@ function showRestoreFeedback() {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     z-index: 10000;
     animation: slideInRight 0.3s ease;
-  `;
-  indicator.textContent = '↩ Form restored';
-  
-  document.body.appendChild(indicator);
-  
-  setTimeout(() => {
-    indicator.style.animation = 'slideOutRight 0.3s ease';
+    `;
+    indicator.textContent = '↩ Form restored';
+
+    document.body.appendChild(indicator);
+
     setTimeout(() => {
-      if (indicator.parentNode) {
-        indicator.parentNode.removeChild(indicator);
-      }
-    }, 300);
-  }, 2000);
-}
+      indicator.style.animation = 'slideOutRight 0.3s ease';
+      setTimeout(() => {
+        if (indicator.parentNode) {
+          indicator.parentNode.removeChild(indicator);
+        }
+      }, 300);
+    }, 2000);
+  }
 
-// Add CSS animations for feedback
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slideInRight {
-    from {
+  // Add CSS animations for feedback
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideInRight {
+      from {
       transform: translateX(100%);
-      opacity: 0;
+    opacity: 0;
     }
     to {
       transform: translateX(0);
-      opacity: 1;
+    opacity: 1;
     }
   }
-  
-  @keyframes slideOutRight {
-    from {
+
+    @keyframes slideOutRight {
+      from {
       transform: translateX(0);
-      opacity: 1;
+    opacity: 1;
     }
     to {
       transform: translateX(100%);
-      opacity: 0;
+    opacity: 0;
     }
   }
-`;
-document.head.appendChild(style);
+    `;
+  document.head.appendChild(style);
 
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
-  if (formObserver) {
-    formObserver.disconnect();
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (formObserver) {
+      formObserver.disconnect();
+    }
+  });
+
+  // Expose some functions for debugging (in development)
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    window.formRemembrancerDebug = {
+      detectForms,
+      getFormData,
+      detectedForms
+    };
   }
-});
-
-// Expose some functions for debugging (in development)
-if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-  window.formRemembrancerDebug = {
-    detectForms,
-    getFormData,
-    detectedForms
-  };
-}
+} // End of global guard
